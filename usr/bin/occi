@@ -16,6 +16,7 @@ F</boot/occidentalis.txt>.  The format is:
 
     # wifi configuration details:
     wifi_ssid=Your Network Here
+    # optionally add this if your network has a password
     wifi_password=your password here
     # optionally add this if you don't broadcast SSID
     wifi_scan_ssid=1
@@ -218,6 +219,7 @@ sub handle_wifi {
   my ($ifconfig) = capture_string('ifconfig', '-a');
   if ($ifconfig !~ /wlan/) {
     diag('No wireless hardware found.');
+  # if the wifi passphrase is specified, it's a secured network
   } elsif (defined $config{wifi_password}) {
     my $wpa_config = capture_string(
       'wpa_passphrase',
@@ -254,15 +256,56 @@ WPA
 
     put_file($conf_file, $wpa_config, $conf_file . '.backup');
   } else {
-    diag("No wifi_password defined, falling back to iwconfig.");
-    my $iwlog = capture_string(
-      'iwconfig',
-      # TODO: this of course is not always going to be the same...
-      'wlan0',
-      'essid',
-      $config{wifi_ssid}
-    );
+    diag("No wifi_password defined, assuming open network.");
+    my $wpa_config = <<"EOF";
+network={
+        $config{wifi_ssid}
+}
+EOF
 
+  my $extraConfig = "";
+  if (defined $config{wifi_scan_ssid}) {
+	$extraConfig = "	scan_ssid=$config{wifi_scan_ssid}\n";
+  }
+ 
+  if (defined $config{wifi_key_mgmt}) {
+	$extraConfig = "$extraConfig	key_mgmt=$config{wifi_key_mgmt}\n";
+  } else {
+  	# just to be difficult, wpa_supplicant requires NONE for open networks
+  	$extraConfig = "$extraConfig	key_mgmt=NONE\n";
+  }
+  $wpa_config =~ s/\}/$extraConfig\}/;
+  
+  $wpa_config = <<"EOF";
+# $blurb
+ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+update_config=1
+$wpa_config
+EOF
+
+    diag("Writing $conf_file");
+
+    my @log = capture_list(
+      'wpa_cli',
+      'reconfigure'
+    );
+    foreach my $logline (@log) {
+      diag($logline);
+    }
+
+    put_file($conf_file, $wpa_config, $conf_file . '.backup');
+
+    diag("Writing $conf_file");
+
+    my @log = capture_list(
+      'wpa_cli',
+      'reconfigure'
+    );
+    foreach my $logline (@log) {
+      diag($logline);
+    }
+
+    put_file($conf_file, $wpa_config, $conf_file . '.backup');
   }
 }
 
