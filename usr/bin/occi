@@ -259,7 +259,7 @@ WPA
     diag("No wifi_password defined, assuming open network.");
     my $wpa_config = <<"EOF";
 network={
-        $config{wifi_ssid}
+        ssid=$config{wifi_ssid}
 }
 EOF
 
